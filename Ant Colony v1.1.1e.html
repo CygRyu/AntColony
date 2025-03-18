@@ -1,0 +1,2521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ant Colony Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#5D5CDE',
+                        sand: '#f5d5a1',
+                        soil: '#8B4513',
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .colony-display {
+            font-family: monospace;
+            white-space: pre;
+            line-height: 1.2;
+        }
+        .ant-worker { color: #5D5CDE; }
+        .ant-soldier { color: #ff5733; }
+        .ant-nurse { color: #4CAF50; }
+        .ant-queen { color: #9c27b0; }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .log-entry {
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        /* Fade in animation for expedition item */
+        @keyframes slideIn {
+            from { transform: translateX(20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .expedition-item {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        /* Progress bar styles - removed animation for smoother updates */
+        .progress-fill {
+            transition: width 1s linear;
+        }
+        
+        /* Cooldown button styles */
+        .btn-cooldown {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-cooldown::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 100%;
+            background-color: rgba(0, 0, 0, 0.3);
+            transform-origin: left;
+            transform: scaleX(0);
+            transition: transform linear;
+        }
+        
+        /* Notification styles */
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+
+        .notification {
+            animation: slideInRight 0.3s ease-out forwards, fadeOut 0.5s ease-in forwards;
+            animation-delay: 0s, 2.5s;
+            max-width: 300px;
+            pointer-events: none;
+        }
+
+        .notification-success {
+            background-color: #10B981;
+        }
+
+        .notification-error {
+            background-color: #EF4444;
+        }
+
+        .notification-info {
+            background-color: #3B82F6;
+        }
+        
+        /* Custom tooltip styles */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+        }
+        
+        .tooltip .tooltip-content {
+            visibility: hidden;
+            width: 220px;
+            background-color: #2d3748;
+            color: #fff;
+            text-align: left;
+            border-radius: 6px;
+            padding: 8px 10px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -110px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.875rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            pointer-events: none;
+        }
+        
+        .tooltip .tooltip-content::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #2d3748 transparent transparent transparent;
+        }
+        
+        .tooltip:hover .tooltip-content {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        .dark .tooltip .tooltip-content {
+            background-color: #4a5568;
+            color: #f7fafc;
+        }
+        
+        .dark .tooltip .tooltip-content::after {
+            border-color: #4a5568 transparent transparent transparent;
+        }
+        
+        /* Dark mode support */
+        .dark .colony-display {
+            background-color: #2d2d2d;
+            color: #e0e0e0;
+        }
+        .dark .ant-worker { color: #8080ff; }
+        .dark .ant-soldier { color: #ff8066; }
+        .dark .ant-nurse { color: #66ff66; }
+        .dark .ant-queen { color: #d580ff; }
+    </style>
+</head>
+<body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <h1 class="text-3xl font-bold text-center mb-6">Ant Colony Simulator</h1>
+        
+        <!-- Version Info and Controls Bar -->
+        <div class="flex flex-wrap justify-between items-center mb-4 text-sm">
+            <div class="flex gap-2">
+                <span class="bg-primary/20 px-2 py-1 rounded-md">v1.1.1</span>
+                <button id="btn-save" class="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded">Save Game</button>
+                <button id="btn-reset" class="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded">Reset</button>
+                <button id="btn-export" class="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded">Export</button>
+                <button id="btn-import" class="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded">Import</button>
+            </div>
+            <div>
+                <button id="btn-support" class="px-2 py-1 flex items-center gap-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded">
+                    <span>Support Developer</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Colony Stats and Controls -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div class="bg-gray-100 dark:bg-gray-800 rounded-xl p-4 shadow-md">
+                <h2 class="text-xl font-semibold mb-3">Colony Statistics</h2>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <p class="font-medium">Day: <span id="day-count">1</span></p>
+                        <p class="font-medium">Population: <span id="population">11</span></p>
+                        <p class="font-medium">Queen Health: <span id="queen-health">100</span>%</p>
+                    </div>
+                    <div>
+                        <p class="font-medium">Food: <span id="food-count">50</span> units</p>
+                        <p class="font-medium text-sm text-gray-600 dark:text-gray-400">
+                            <span class="text-green-500">Non-perishable: <span id="nonperishable-food">20</span></span> | 
+                            <span class="text-orange-500">Perishable: <span id="perishable-food">30</span></span>
+                        </p>
+                        <p class="font-medium">Fungus Farms: <span id="fungus-farms">0</span></p>
+                        <p class="font-medium">Nest Size: <span id="nest-size">3</span> chambers</p>
+                        <p class="font-medium">Threat Level: <span id="threat-level">Low</span></p>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <h3 class="font-medium mb-2">Population Distribution:</h3>
+                    <div class="flex items-center mb-1">
+                        <div class="w-24 text-sm">Workers:</div>
+                        <div class="flex-1 bg-gray-300 dark:bg-gray-700 rounded-full h-2.5">
+                            <div id="worker-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 60%"></div>
+                        </div>
+                        <div id="worker-count" class="ml-2 text-sm w-8">6</div>
+                    </div>
+                    <div class="flex items-center mb-1">
+                        <div class="w-24 text-sm">Soldiers:</div>
+                        <div class="flex-1 bg-gray-300 dark:bg-gray-700 rounded-full h-2.5">
+                            <div id="soldier-bar" class="bg-red-600 h-2.5 rounded-full" style="width: 20%"></div>
+                        </div>
+                        <div id="soldier-count" class="ml-2 text-sm w-8">2</div>
+                    </div>
+                    <div class="flex items-center mb-1">
+                        <div class="w-24 text-sm">Nurses:</div>
+                        <div class="flex-1 bg-gray-300 dark:bg-gray-700 rounded-full h-2.5">
+                            <div id="nurse-bar" class="bg-green-600 h-2.5 rounded-full" style="width: 20%"></div>
+                        </div>
+                        <div id="nurse-count" class="ml-2 text-sm w-8">2</div>
+                    </div>
+                    <div class="flex items-center">
+                        <div class="w-24 text-sm">Queen:</div>
+                        <div class="flex-1 bg-gray-300 dark:bg-gray-700 rounded-full h-2.5">
+                            <div id="queen-bar" class="bg-purple-600 h-2.5 rounded-full" style="width: 10%"></div>
+                        </div>
+                        <div id="queen-count" class="ml-2 text-sm w-8">1</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-gray-100 dark:bg-gray-800 rounded-xl p-4 shadow-md">
+                <h2 class="text-xl font-semibold mb-3">Simulation Controls</h2>
+                <div class="flex flex-wrap gap-3 mb-4">
+                    <button id="btn-pause" class="px-4 py-2 bg-primary hover:bg-opacity-80 text-white rounded-lg flex-grow">
+                        Pause
+                    </button>
+                    <div id="real-time-clock" class="px-4 py-2 bg-gray-400 text-white rounded-lg flex-grow text-center">
+                        12:00:00 PM
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <h3 class="font-medium mb-2">Environmental Conditions:</h3>
+                    <div class="flex justify-between items-center mb-2">
+                        <span>Weather:</span>
+                        <span id="weather-status" class="tooltip px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
+                            Sunny
+                            <div class="tooltip-content">
+                                <strong>Sunny</strong>
+                                <ul class="list-disc pl-4 mt-1">
+                                    <li>+10% foraging efficiency</li>
+                                    <li>Workers move faster</li>
+                                    <li>Ideal conditions for the colony</li>
+                                </ul>
+                            </div>
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span>Season:</span>
+                        <span id="season-status" class="tooltip px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded">
+                            Summer
+                            <div class="tooltip-content">
+                                <strong>Summer</strong>
+                                <ul class="list-disc pl-4 mt-1">
+                                    <li>+10% foraging efficiency</li>
+                                    <li>Food is more abundant</li>
+                                    <li>Ideal for colony growth</li>
+                                </ul>
+                            </div>
+                        </span>
+                    </div>
+                </div>
+                
+                <!-- Foraging Controls -->
+                <div class="mb-4">
+                    <h3 class="font-medium mb-2">Foraging Management:</h3>
+                    <div class="flex items-center mb-2">
+                        <div class="w-24 text-sm">Available Workers:</div>
+                        <div id="available-workers" class="font-semibold">6</div>
+                    </div>
+                    <div class="flex items-center mb-2">
+                        <div class="w-24 text-sm">Assigned to Forage:</div>
+                        <div id="foraging-workers" class="font-semibold">0</div>
+                    </div>
+                    <div class="flex items-center gap-2 mb-2">
+                        <button id="btn-decrease-foragers" class="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center">-</button>
+                        <input type="range" id="foraging-slider" min="0" max="6" value="0" class="flex-1">
+                        <button id="btn-increase-foragers" class="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center">+</button>
+                    </div>
+                    <button id="btn-send-foragers" class="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded mt-1">
+                        Send Workers Foraging
+                    </button>
+                </div>
+                
+                <!-- Fungus Farming -->
+                <div class="mb-4">
+                    <h3 class="font-medium mb-2">Fungus Farming:</h3>
+                    <div class="flex items-center justify-between mb-2">
+                        <span>Current Farms:</span>
+                        <span id="fungus-farm-count" class="font-semibold">0</span>
+                    </div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span>Production Rate:</span>
+                        <span id="fungus-production-rate" class="font-semibold">0 food/min</span>
+                    </div>
+                    <button id="btn-build-fungus" class="w-full px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded">
+                        Build Fungus Farm (Costs: 10 food, 3 workers)
+                    </button>
+                </div>
+                
+                <div>
+                    <h3 class="font-medium mb-2">Player Actions:</h3>
+                    <div class="flex flex-wrap gap-2">
+                        <button id="btn-add-food" class="relative px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded btn-cooldown">
+                            Add Small Food
+                            <span id="add-food-cooldown" class="absolute text-xs bottom-0 left-0 w-full text-center hidden"></span>
+                        </button>
+                        <button id="btn-observe" class="tooltip px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded">
+                            Observe Chamber
+                            <div class="tooltip-content">
+                                <p>Observe a random chamber in your colony.</p>
+                                <p class="mt-1 text-yellow-300">You might discover something interesting!</p>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Historical Data and Tabs -->
+        <div class="mb-6">
+            <div class="bg-gray-100 dark:bg-gray-800 rounded-xl p-4 shadow-md">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold">Historical Data</h2>
+                    <div class="flex gap-2">
+                        <button id="btn-tab-population" class="px-3 py-1 bg-primary text-white rounded-md text-sm">Population</button>
+                        <button id="btn-tab-food" class="px-3 py-1 bg-gray-400 text-white rounded-md text-sm">Food</button>
+                        <button id="btn-tab-events" class="px-3 py-1 bg-gray-400 text-white rounded-md text-sm">Events</button>
+                    </div>
+                </div>
+                
+                <!-- Chart Container -->
+                <div id="chart-container" class="w-full h-[200px]">
+                    <canvas id="history-chart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Colony Visualization and Logs -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="md:col-span-2 grid grid-cols-1 gap-6">
+                <!-- Colony Visualization -->
+                <div class="bg-gray-100 dark:bg-gray-800 rounded-xl p-4 shadow-md">
+                    <h2 class="text-xl font-semibold mb-3">Colony Visualization</h2>
+                    <div id="colony-display" class="colony-display bg-amber-50 dark:bg-gray-700 p-3 rounded-lg min-h-[300px] text-sm overflow-auto"></div>
+                </div>
+                
+                <!-- Active Expeditions -->
+                <div class="bg-gray-100 dark:bg-gray-800 rounded-xl p-4 shadow-md">
+                    <h2 class="text-xl font-semibold mb-3">Active Expeditions</h2>
+                    <div id="expeditions-container" class="space-y-3 min-h-[100px]">
+                        <div class="text-center text-gray-500 dark:text-gray-400 py-6">No active expeditions</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-gray-100 dark:bg-gray-800 rounded-xl p-4 shadow-md">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xl font-semibold">Event Logs</h2>
+                    <div class="flex gap-2">
+                        <button id="btn-log-colony" class="px-2 py-1 bg-primary text-white text-xs rounded">Colony</button>
+                        <button id="btn-log-ants" class="px-2 py-1 bg-gray-400 text-white text-xs rounded">Ants</button>
+                    </div>
+                </div>
+                <div id="event-log" class="bg-white dark:bg-gray-900 p-3 rounded-lg h-[300px] overflow-y-auto text-sm"></div>
+            </div>
+        </div>
+        
+        <!-- Support Modal -->
+        <div id="support-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl max-w-md w-full">
+                <h2 class="text-xl font-bold mb-4">Support the Developer</h2>
+                <p class="mb-4">If you're enjoying the Ant Colony Simulator, please consider supporting the developer!</p>
+                <div class="flex flex-col gap-3">
+                    <a href="https://ko-fi.com/cygryu" target="_blank" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded text-center">
+                        Support on Ko-Fi
+                    </a>
+                    <a href="https://www.paypal.com/paypalme/sofiansu?country.x=ID&locale.x=en_US" target="_blank" class="bg-blue-700 hover:bg-blue-800 text-white py-2 px-4 rounded text-center">
+                        Support on PayPal
+                    </a>
+                </div>
+                <button id="close-support-modal" class="mt-4 w-full border border-gray-300 dark:border-gray-600 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+                    Close
+                </button>
+            </div>
+        </div>
+        
+        <!-- Import Modal -->
+        <div id="import-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl max-w-md w-full">
+                <h2 class="text-xl font-bold mb-4">Import Game Data</h2>
+                <p class="mb-4">Paste your exported save data below:</p>
+                <textarea id="import-data" class="w-full border rounded p-2 h-32 text-black dark:text-white bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"></textarea>
+                <div class="flex gap-2 mt-4">
+                    <button id="confirm-import" class="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+                        Import
+                    </button>
+                    <button id="close-import-modal" class="flex-1 border border-gray-300 dark:border-gray-600 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Export Modal -->
+        <div id="export-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl max-w-md w-full">
+                <h2 class="text-xl font-bold mb-4">Export Game Data</h2>
+                <p class="mb-4">Copy the save data below:</p>
+                <textarea id="export-data" class="w-full border rounded p-2 h-32 text-black dark:text-white bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 mb-2" readonly></textarea>
+                <div class="flex gap-2 mt-2">
+                    <button id="copy-export-data" class="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+                        Copy to Clipboard
+                    </button>
+                    <button id="close-export-modal" class="flex-1 border border-gray-300 dark:border-gray-600 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Notification Container -->
+        <div id="notification-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
+        
+        <!-- Footer -->
+        <div class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
+            <p>Ant Colony Simulator v1.1.1 | Developed by CygRyu</p>
+            <div id="autosave-indicator" class="mt-1 text-xs opacity-0 transition-opacity">
+                Game autosaved
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check for dark mode preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+        }
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+            if (event.matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+
+        // Colony state
+        const colony = {
+            version: '1.1.1',
+            day: 1,
+            timeOfDay: 'Morning',
+            food: {
+                total: 50,
+                perishable: 30,
+                nonPerishable: 20,
+                spoilage: {
+                    rate: 10, // % per day for perishable food
+                    lastCheck: Date.now()
+                }
+            },
+            nestSize: 3,
+            threatLevel: 'Low',
+            weather: 'Sunny',
+            season: 'Summer',
+            queen: {
+                health: 100,
+                eggsLaid: 0,
+                lastEggDay: 0
+            },
+            population: {
+                queen: 1,
+                workers: 6,
+                soldiers: 2,
+                nurses: 2,
+                eggs: 0,
+                larvae: 0,
+                pupae: 0
+            },
+            resourceAllocation: {
+                foraging: 70,
+                defense: 20,
+                nursing: 10
+            },
+            foraging: {
+                assignedWorkers: 0,
+                availableWorkers: 6,
+                currentExpeditions: [],
+                foodPerMinutePerWorker: 4, // Base rate
+                expeditionDuration: 60000, // 1 minute in milliseconds
+            },
+            fungus: {
+                farms: 0,
+                productionRate: 3, // Food per minute per farm
+                lastHarvest: Date.now()
+            },
+            chambers: [
+                { type: 'Queen Chamber', ants: ['Q'], size: 1 },
+                { type: 'Nursery', ants: ['N', 'N'], size: 1 },
+                { type: 'Food Storage', ants: ['W', 'W'], size: 1 },
+                { type: 'Tunnel', ants: ['W', 'W', 'W'], size: 2 },
+                { type: 'Entrance', ants: ['S', 'S', 'W'], size: 1 }
+            ],
+            logs: {
+                colony: [],
+                ants: []
+            },
+            // New property for historical data
+            history: {
+                days: [],
+                population: [],
+                food: {
+                    total: [],
+                    perishable: [],
+                    nonPerishable: []
+                },
+                ants: {
+                    queen: [],
+                    workers: [],
+                    soldiers: [],
+                    nurses: []
+                },
+                events: []
+            }
+        };
+
+        // Simulation variables
+        let simulationInterval;
+        let simulationSpeed = 1000; // milliseconds between updates (1 second)
+        let isPaused = false;
+        let tickCounter = 0;
+        let currentLogView = 'colony'; // 'colony' or 'ants'
+        let autosaveInterval;
+        let historyChart; // Chart.js instance
+        let currentChartTab = 'population'; // Default chart view
+        
+        // Add Food Button Cooldown
+        let addFoodCooldown = {
+            active: false,
+            timeLeft: 0,
+            maxTime: 20, // 20 seconds cooldown
+            interval: null
+        };
+        
+        // Weather and season information for tooltips
+        const weatherInfo = {
+            'Sunny': {
+                description: 'Sunny',
+                effects: [
+                    '+10% foraging efficiency',
+                    'Workers move faster',
+                    'Ideal conditions for the colony'
+                ]
+            },
+            'Rainy': {
+                description: 'Rainy',
+                effects: [
+                    '-15% foraging efficiency',
+                    'Reduced worker speed',
+                    'Higher humidity (food spoils faster)',
+                    'Risk of flooding'
+                ]
+            },
+            'Cloudy': {
+                description: 'Cloudy',
+                effects: [
+                    'Normal foraging efficiency',
+                    'Slightly reduced worker speed',
+                    'Balanced conditions'
+                ]
+            }
+        };
+        
+        const seasonInfo = {
+            'Spring': {
+                description: 'Spring',
+                effects: [
+                    'Normal foraging efficiency',
+                    'Balanced food availability',
+                    'Good season for egg laying',
+                    'Occasional rain'
+                ]
+            },
+            'Summer': {
+                description: 'Summer',
+                effects: [
+                    '+10% foraging efficiency',
+                    'Food is more abundant',
+                    'Ideal for colony growth'
+                ]
+            },
+            'Fall': {
+                description: 'Fall',
+                effects: [
+                    'Normal foraging efficiency',
+                    'Need to prepare for winter',
+                    'Start storing more food'
+                ]
+            },
+            'Winter': {
+                description: 'Winter',
+                effects: [
+                    '-20% foraging efficiency',
+                    'Food is scarce',
+                    'Slower ant development',
+                    'Focus on survival'
+                ]
+            }
+        };
+        
+        // Set the initial season based on the current real month
+        const currentMonth = new Date().getMonth();
+        if (currentMonth >= 2 && currentMonth <= 4) {
+            colony.season = 'Spring';
+        } else if (currentMonth >= 5 && currentMonth <= 7) {
+            colony.season = 'Summer';
+        } else if (currentMonth >= 8 && currentMonth <= 10) {
+            colony.season = 'Fall';
+        } else {
+            colony.season = 'Winter';
+        }
+        
+        // DOM Elements
+        const colonyDisplay = document.getElementById('colony-display');
+        const eventLog = document.getElementById('event-log');
+        const populationDisplay = document.getElementById('population');
+        const foodDisplay = document.getElementById('food-count');
+        const perishableFoodDisplay = document.getElementById('perishable-food');
+        const nonPerishableFoodDisplay = document.getElementById('nonperishable-food');
+        const dayDisplay = document.getElementById('day-count');
+        const queenHealthDisplay = document.getElementById('queen-health');
+        const nestSizeDisplay = document.getElementById('nest-size');
+        const threatLevelDisplay = document.getElementById('threat-level');
+        const weatherDisplay = document.getElementById('weather-status');
+        const seasonDisplay = document.getElementById('season-status');
+        const fungusFarmsDisplay = document.getElementById('fungus-farms');
+        const fungusFarmCountDisplay = document.getElementById('fungus-farm-count');
+        const fungusProductionRateDisplay = document.getElementById('fungus-production-rate');
+        
+        // Population distribution elements
+        const workerBar = document.getElementById('worker-bar');
+        const soldierBar = document.getElementById('soldier-bar');
+        const nurseBar = document.getElementById('nurse-bar');
+        const queenBar = document.getElementById('queen-bar');
+        const workerCount = document.getElementById('worker-count');
+        const soldierCount = document.getElementById('soldier-count');
+        const nurseCount = document.getElementById('nurse-count');
+        const queenCount = document.getElementById('queen-count');
+        
+        // Foraging elements
+        const availableWorkersDisplay = document.getElementById('available-workers');
+        const foragingWorkersDisplay = document.getElementById('foraging-workers');
+        const foragingSlider = document.getElementById('foraging-slider');
+        const expeditionsContainer = document.getElementById('expeditions-container');
+        
+        // Control buttons
+        const btnPause = document.getElementById('btn-pause');
+        const btnAddFood = document.getElementById('btn-add-food');
+        const btnObserve = document.getElementById('btn-observe');
+        const btnLogColony = document.getElementById('btn-log-colony');
+        const btnLogAnts = document.getElementById('btn-log-ants');
+        const btnDecreaseForagers = document.getElementById('btn-decrease-foragers');
+        const btnIncreaseForagers = document.getElementById('btn-increase-foragers');
+        const btnSendForagers = document.getElementById('btn-send-foragers');
+        const btnBuildFungus = document.getElementById('btn-build-fungus');
+        
+        // Game control buttons
+        const btnSave = document.getElementById('btn-save');
+        const btnReset = document.getElementById('btn-reset');
+        const btnExport = document.getElementById('btn-export');
+        const btnImport = document.getElementById('btn-import');
+        const btnSupport = document.getElementById('btn-support');
+        
+        // Historical data tab buttons
+        const btnTabPopulation = document.getElementById('btn-tab-population');
+        const btnTabFood = document.getElementById('btn-tab-food');
+        const btnTabEvents = document.getElementById('btn-tab-events');
+        
+        // Cooldown elements
+        const addFoodCooldownElement = document.getElementById('add-food-cooldown');
+        
+        // Modal elements
+        const supportModal = document.getElementById('support-modal');
+        const closeSupportModal = document.getElementById('close-support-modal');
+        const importModal = document.getElementById('import-modal');
+        const closeImportModal = document.getElementById('close-import-modal');
+        const confirmImport = document.getElementById('confirm-import');
+        const importDataTextarea = document.getElementById('import-data');
+        const exportModal = document.getElementById('export-modal');
+        const closeExportModal = document.getElementById('close-export-modal');
+        const exportDataTextarea = document.getElementById('export-data');
+        const copyExportData = document.getElementById('copy-export-data');
+        const autosaveIndicator = document.getElementById('autosave-indicator');
+        
+        // Show notification function
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notification-container');
+            
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type} text-white px-4 py-2 rounded-lg shadow-lg`;
+            notification.textContent = message;
+            
+            // Add to container
+            container.appendChild(notification);
+            
+            // Remove after animation completes
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+        
+        // Update weather tooltip
+        function updateWeatherTooltip() {
+            const weatherTooltip = weatherDisplay.querySelector('.tooltip-content');
+            if (!weatherTooltip) return;
+            
+            const info = weatherInfo[colony.weather] || weatherInfo['Sunny'];
+            let content = `<strong>${info.description}</strong><ul class="list-disc pl-4 mt-1">`;
+            info.effects.forEach(effect => {
+                content += `<li>${effect}</li>`;
+            });
+            content += `</ul>`;
+            
+            weatherTooltip.innerHTML = content;
+        }
+        
+        // Update season tooltip
+        function updateSeasonTooltip() {
+            const seasonTooltip = seasonDisplay.querySelector('.tooltip-content');
+            if (!seasonTooltip) return;
+            
+            const info = seasonInfo[colony.season] || seasonInfo['Summer'];
+            let content = `<strong>${info.description}</strong><ul class="list-disc pl-4 mt-1">`;
+            info.effects.forEach(effect => {
+                content += `<li>${effect}</li>`;
+            });
+            content += `</ul>`;
+            
+            seasonTooltip.innerHTML = content;
+        }
+        
+        // Process "Observe Chamber" random events - NEW FEATURE
+        function processObservationEvent() {
+            // 3% chance to find hidden food
+            if (Math.random() < 0.03) {
+                // Find amount between 5 and 50
+                const foodAmount = Math.floor(Math.random() * 46) + 5;
+                
+                // Distribution: 60% perishable, 40% non-perishable for hidden stashes
+                const perishableAmount = Math.floor(foodAmount * 0.6);
+                const nonPerishableAmount = foodAmount - perishableAmount;
+                
+                // Add to colony food
+                colony.food.perishable += perishableAmount;
+                colony.food.nonPerishable += nonPerishableAmount;
+                colony.food.total += foodAmount;
+                
+                // Log the discovery
+                addColonyLog(`RARE FIND! You discovered a hidden food stash! +${foodAmount} food added to colony stores.`);
+                showNotification(`Hidden food stash found: +${foodAmount}!`, 'success');
+                
+                // Update display
+                updateDisplay();
+                
+                return true;
+            }
+            
+            return false;
+        }
+        
+        // Initialize the simulation
+        function initSimulation() {
+            // Check for existing save
+            loadGame();
+            
+            updateDisplay();
+            updateWeatherTooltip();
+            updateSeasonTooltip();
+            
+            addColonyLog('Simulation started. The colony awakens!');
+            addAntLog('Queen ant is laying eggs');
+            
+            // Initialize historical chart
+            initHistoricalChart();
+            
+            // Start the simulation loop
+            simulationInterval = setInterval(simulationTick, simulationSpeed);
+            
+            // Set up event listeners
+            setupEventListeners();
+            
+            // Set up autosave
+            autosaveInterval = setInterval(() => {
+                saveGame();
+                // Show subtle notification for autosave
+                showNotification('Game autosaved', 'info');
+            }, 10000); // Autosave every 10 seconds
+        }
+        
+        // Initialize historical chart
+        function initHistoricalChart() {
+            const ctx = document.getElementById('history-chart').getContext('2d');
+            
+            // Create initial empty chart
+            historyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Total Population',
+                        data: [],
+                        borderColor: '#5D5CDE',
+                        backgroundColor: 'rgba(93, 92, 222, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    }
+                }
+            });
+            
+            // Update chart with current data
+            updateHistoricalChart();
+        }
+        
+        // Update historical chart based on current tab
+        function updateHistoricalChart() {
+            if (!historyChart) return;
+            
+            // Clear existing datasets
+            historyChart.data.datasets = [];
+            
+            if (currentChartTab === 'population') {
+                historyChart.data.labels = [...colony.history.days];
+                
+                // Add datasets for different ant types
+                historyChart.data.datasets = [
+                    {
+                        label: 'Total Population',
+                        data: [...colony.history.population],
+                        borderColor: '#5D5CDE',
+                        backgroundColor: 'rgba(93, 92, 222, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Workers',
+                        data: [...colony.history.ants.workers],
+                        borderColor: '#3B82F6',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Soldiers',
+                        data: [...colony.history.ants.soldiers],
+                        borderColor: '#EF4444',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Nurses',
+                        data: [...colony.history.ants.nurses],
+                        borderColor: '#10B981',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.4
+                    }
+                ];
+            } 
+            else if (currentChartTab === 'food') {
+                historyChart.data.labels = [...colony.history.days];
+                
+                // Add datasets for different food types
+                historyChart.data.datasets = [
+                    {
+                        label: 'Total Food',
+                        data: [...colony.history.food.total],
+                        borderColor: '#F59E0B',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Perishable',
+                        data: [...colony.history.food.perishable],
+                        borderColor: '#F97316',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Non-Perishable',
+                        data: [...colony.history.food.nonPerishable],
+                        borderColor: '#16A34A',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.4
+                    }
+                ];
+            }
+            else if (currentChartTab === 'events') {
+                // Create a simplified event display
+                historyChart.data.labels = [...colony.history.days];
+                
+                // Map events to numerical indicators (1 = event occurred)
+                const eventData = new Array(colony.history.days.length).fill(0);
+                colony.history.events.forEach(event => {
+                    const dayIndex = colony.history.days.indexOf(event.day);
+                    if (dayIndex !== -1) {
+                        eventData[dayIndex] = 1;
+                    }
+                });
+                
+                historyChart.data.datasets = [
+                    {
+                        label: 'Major Events',
+                        data: eventData,
+                        borderColor: '#8B5CF6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.3)',
+                        fill: true,
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        showLine: false
+                    }
+                ];
+            }
+            
+            historyChart.update();
+        }
+        
+        // Add data point to historical record
+        function recordHistoricalData() {
+            // Only record once per in-game day
+            if (colony.history.days.includes(colony.day)) return;
+            
+            // Record current day
+            colony.history.days.push(colony.day);
+            
+            // Record population
+            colony.history.population.push(getTotalPopulation());
+            colony.history.ants.queen.push(colony.population.queen);
+            colony.history.ants.workers.push(colony.population.workers);
+            colony.history.ants.soldiers.push(colony.population.soldiers);
+            colony.history.ants.nurses.push(colony.population.nurses);
+            
+            // Record food
+            colony.history.food.total.push(colony.food.total);
+            colony.history.food.perishable.push(colony.food.perishable);
+            colony.history.food.nonPerishable.push(colony.food.nonPerishable);
+            
+            // Limit history size to keep performance good
+            const maxHistoryPoints = 30;
+            if (colony.history.days.length > maxHistoryPoints) {
+                colony.history.days.shift();
+                colony.history.population.shift();
+                colony.history.ants.queen.shift();
+                colony.history.ants.workers.shift();
+                colony.history.ants.soldiers.shift();
+                colony.history.ants.nurses.shift();
+                colony.history.food.total.shift();
+                colony.history.food.perishable.shift();
+                colony.history.food.nonPerishable.shift();
+            }
+            
+            // Update chart
+            updateHistoricalChart();
+        }
+        
+        // Main simulation tick - using real-time
+        function simulationTick() {
+            if (isPaused) return;
+            
+            // Update real-time clock display
+            updateRealTimeClock();
+            
+            // Get current time to determine time of day
+            const now = new Date();
+            const hour = now.getHours();
+            
+            // Determine time of day based on real hour
+            let newTimeOfDay;
+            if (hour >= 5 && hour < 12) {
+                newTimeOfDay = 'Morning';
+            } else if (hour >= 12 && hour < 18) {
+                newTimeOfDay = 'Afternoon';
+            } else {
+                newTimeOfDay = 'Evening';
+            }
+            
+            // Change time of day if it's different
+            if (newTimeOfDay !== colony.timeOfDay) {
+                changeTimeOfDay(newTimeOfDay);
+            }
+            
+            // Check if it's a new day (midnight)
+            if (hour === 0 && now.getMinutes() === 0 && now.getSeconds() < 5) {
+                colony.day++;
+                dayDisplay.textContent = colony.day;
+                processQueenActivity();
+                processFoodSpoilage(); // Process spoilage on day change
+                addColonyLog(`Dawn of Day ${colony.day}. A new day begins for the colony.`);
+                
+                // Add to historical data
+                recordHistoricalData();
+            }
+            
+            tickCounter++;
+            
+            // Process food consumption (every 30 seconds)
+            if (tickCounter % 30 === 0) {
+                consumeFood();
+            }
+            
+            // Process ant tasks (every 15 seconds)
+            if (tickCounter % 15 === 0) {
+                processAntTasks();
+            }
+            
+            // Process fungus farming (every 10 seconds)
+            if (tickCounter % 10 === 0) {
+                harvestFungus();
+            }
+            
+            // Process food spoilage (every minute - now more gradual)
+            if (tickCounter % 60 === 0) {
+                processFoodSpoilage();
+            }
+            
+            // Process foraging expeditions
+            processForagingExpeditions();
+            
+            // Check for random events (0.1% chance per tick - less frequent)
+            if (Math.random() < 0.001) {
+                triggerRandomEvent();
+            }
+            
+            // Update display
+            updateDisplay();
+        }
+        
+        // Update the real-time clock display
+        function updateRealTimeClock() {
+            const now = new Date();
+            const timeElement = document.getElementById('real-time-clock');
+            timeElement.textContent = now.toLocaleTimeString();
+        }
+        
+        // Process queen's egg-laying activity
+        function processQueenActivity() {
+            const daysSinceLastEgg = colony.day - colony.queen.lastEggDay;
+            
+            // Queen lays eggs every 3-5 days depending on food and health
+            if (daysSinceLastEgg >= 3 && colony.queen.health > 60 && colony.food.total > 20) {
+                const numberOfEggs = Math.floor(Math.random() * 5) + 3; // 3-7 eggs
+                colony.population.eggs += numberOfEggs;
+                colony.queen.eggsLaid += numberOfEggs;
+                colony.queen.lastEggDay = colony.day;
+                
+                addColonyLog(`Queen laid ${numberOfEggs} eggs!`);
+                
+                // Record major event
+                colony.history.events.push({
+                    day: colony.day,
+                    type: 'reproduction',
+                    description: `Queen laid ${numberOfEggs} eggs`
+                });
+                
+                // Reduce queen's health slightly
+                colony.queen.health -= 5;
+                if (colony.queen.health < 0) colony.queen.health = 0;
+            }
+            
+            // Queen recovers health if food is plentiful
+            if (colony.food.total > 30 && colony.queen.health < 100) {
+                colony.queen.health += 2;
+                if (colony.queen.health > 100) colony.queen.health = 100;
+            }
+        }
+        
+        // Process food consumption
+        function consumeFood() {
+            const totalAnts = getTotalPopulation();
+            const foodConsumption = Math.ceil(totalAnts / 4); // Each 4 ants consume 1 food unit
+            
+            // Consume food, preferring perishable first
+            if (colony.food.perishable >= foodConsumption) {
+                colony.food.perishable -= foodConsumption;
+            } else {
+                // Use some perishable and some non-perishable
+                const perishableUsed = colony.food.perishable;
+                colony.food.perishable = 0;
+                
+                const remainingNeeded = foodConsumption - perishableUsed;
+                colony.food.nonPerishable -= remainingNeeded;
+                
+                if (colony.food.nonPerishable < 0) {
+                    colony.food.nonPerishable = 0;
+                }
+            }
+            
+            // Update total food
+            colony.food.total = colony.food.perishable + colony.food.nonPerishable;
+            
+            if (colony.food.total <= 0) {
+                addColonyLog('Colony is out of food! Ants are starving.');
+                
+                // Record major event
+                colony.history.events.push({
+                    day: colony.day,
+                    type: 'disaster',
+                    description: 'Colony ran out of food'
+                });
+                
+                // Ants start dying if no food
+                starvationEffect();
+            }
+        }
+        
+        // Effect of starvation on the colony
+        function starvationEffect() {
+            // Reduce queen health faster
+            colony.queen.health -= 10;
+            
+            // Chance of ants dying
+            if (Math.random() < 0.3) {
+                // Kill a random ant
+                const antTypes = ['workers', 'soldiers', 'nurses'];
+                const randomType = antTypes[Math.floor(Math.random() * antTypes.length)];
+                
+                if (colony.population[randomType] > 0) {
+                    colony.population[randomType]--;
+                    addColonyLog(`A ${randomType.slice(0, -1)} ant has died from starvation.`);
+                }
+            }
+        }
+        
+        // Process food spoilage - IMPROVED for hourly gradual spoilage
+        function processFoodSpoilage() {
+            if (colony.food.perishable <= 0) return;
+            
+            // Calculate time since last check
+            const now = Date.now();
+            const hoursSinceLastCheck = (now - colony.food.spoilage.lastCheck) / (1000 * 60 * 60);
+            
+            // Only process if meaningful time has passed
+            if (hoursSinceLastCheck < 0.1) return; // Less than 6 minutes
+            
+            // Calculate hourly spoilage rate (instead of daily)
+            const hourlyRate = colony.food.spoilage.rate / 24; // Convert daily percentage to hourly
+            
+            // Apply hourly rate based on time passed
+            const spoilageRate = hourlyRate / 100; // Convert percentage to decimal
+            const spoiledAmount = Math.floor(colony.food.perishable * spoilageRate * hoursSinceLastCheck);
+            
+            if (spoiledAmount > 0) {
+                colony.food.perishable -= spoiledAmount;
+                colony.food.total = colony.food.perishable + colony.food.nonPerishable;
+                
+                // Only log if significant amount
+                if (spoiledAmount >= 3) {
+                    addColonyLog(`${spoiledAmount} units of food have spoiled and been removed.`);
+                }
+            }
+            
+            // Update last check time
+            colony.food.spoilage.lastCheck = now;
+        }
+        
+        // Process fungus harvesting
+        function harvestFungus() {
+            if (colony.fungus.farms <= 0) return;
+            
+            // Calculate time since last harvest
+            const now = Date.now();
+            const minutesSinceLastHarvest = (now - colony.fungus.lastHarvest) / (1000 * 60);
+            
+            // Calculate food produced
+            const foodProduced = Math.floor(colony.fungus.farms * colony.fungus.productionRate * (minutesSinceLastHarvest / 60));
+            
+            if (foodProduced > 0) {
+                // Fungus farming produces non-perishable food
+                colony.food.nonPerishable += foodProduced;
+                colony.food.total += foodProduced;
+                
+                // Log significant harvests
+                if (foodProduced >= 5) {
+                    addAntLog(`Fungus farms produced ${foodProduced} units of food`);
+                }
+                
+                // Update last harvest time
+                colony.fungus.lastHarvest = now;
+            }
+        }
+        
+        // Process ant tasks and role adjustments
+        function processAntTasks() {
+            // Workers gather food is now handled by the foraging system
+            
+            // Process egg development
+            if (colony.population.eggs > 0 && tickCounter % 5 === 0) {
+                const developingEggs = Math.min(colony.population.eggs, Math.ceil(colony.population.nurses / 2));
+                colony.population.eggs -= developingEggs;
+                colony.population.larvae += developingEggs;
+                addAntLog(`${developingEggs} eggs developed into larvae`);
+            }
+            
+            // Process larvae development
+            if (colony.population.larvae > 0 && tickCounter % 8 === 0) {
+                const developingLarvae = Math.min(colony.population.larvae, Math.ceil(colony.population.nurses / 3));
+                colony.population.larvae -= developingLarvae;
+                colony.population.pupae += developingLarvae;
+                addAntLog(`${developingLarvae} larvae developed into pupae`);
+            }
+            
+            // Process pupae development (new ants)
+            if (colony.population.pupae > 0 && tickCounter % 12 === 0) {
+                const maturingPupae = colony.population.pupae;
+                colony.population.pupae = 0;
+                
+                // Assign roles based on colony needs
+                assignNewAnts(maturingPupae);
+                addColonyLog(`${maturingPupae} new ants have emerged from pupae!`);
+            }
+            
+            // Adjust ant roles based on colony needs
+            if (tickCounter % 15 === 0) {
+                adjustAntRoles();
+            }
+        }
+        
+        // Get foraging efficiency based on weather, season, and time
+        function getForageEfficiency() {
+            let base = 0.3; // Base efficiency
+            
+            // Weather effects
+            if (colony.weather === 'Sunny') base += 0.1;
+            if (colony.weather === 'Rainy') base -= 0.15;
+            
+            // Season effects
+            if (colony.season === 'Summer') base += 0.1;
+            if (colony.season === 'Winter') base -= 0.2;
+            
+            // Time of day effects
+            if (colony.timeOfDay === 'Morning') base += 0.05;
+            if (colony.timeOfDay === 'Evening') base -= 0.05;
+            
+            return Math.max(0.1, base); // Minimum 0.1 efficiency
+        }
+        
+        // Process foraging expeditions - IMPROVED for smoother timer display
+        function processForagingExpeditions() {
+            if (colony.foraging.currentExpeditions.length === 0) return;
+            
+            const now = Date.now();
+            const completedExpeditions = [];
+            
+            // Check each expedition
+            colony.foraging.currentExpeditions.forEach(expedition => {
+                // Update progress
+                const elapsed = now - expedition.startTime;
+                const progress = Math.min(100, (elapsed / expedition.duration) * 100);
+                
+                // Update progress bar with transition instead of animation
+                const progressBar = document.getElementById(`progress-${expedition.id}`);
+                if (progressBar) {
+                    progressBar.style.width = `${progress}%`;
+                }
+                
+                // Check if expedition is complete
+                if (elapsed >= expedition.duration) {
+                    completedExpeditions.push(expedition);
+                    handleExpeditionReturn(expedition);
+                }
+            });
+            
+            // Remove completed expeditions
+            if (completedExpeditions.length > 0) {
+                colony.foraging.currentExpeditions = colony.foraging.currentExpeditions.filter(
+                    exp => !completedExpeditions.includes(exp)
+                );
+                
+                // Update available workers
+                colony.foraging.availableWorkers += completedExpeditions.reduce((total, exp) => total + exp.workers, 0);
+                
+                // Update displays
+                availableWorkersDisplay.textContent = colony.foraging.availableWorkers;
+                foragingSlider.max = colony.foraging.availableWorkers;
+                if (parseInt(foragingSlider.value) > colony.foraging.availableWorkers) {
+                    foragingSlider.value = colony.foraging.availableWorkers;
+                }
+                foragingWorkersDisplay.textContent = foragingSlider.value;
+                
+                updateExpeditionsDisplay();
+            }
+        }
+        
+        // Handle expedition return
+        function handleExpeditionReturn(expedition) {
+            // Calculate food found
+            const efficiency = getForageEfficiency();
+            const baseFood = expedition.workers * colony.foraging.foodPerMinutePerWorker * (expedition.duration / 60000);
+            const adjustedFood = Math.floor(baseFood * efficiency);
+            
+            // Determine food type (70% perishable, 30% non-perishable)
+            const perishableFood = Math.floor(adjustedFood * 0.7);
+            const nonPerishableFood = adjustedFood - perishableFood;
+            
+            // Add food to colony
+            colony.food.perishable += perishableFood;
+            colony.food.nonPerishable += nonPerishableFood;
+            colony.food.total = colony.food.perishable + colony.food.nonPerishable;
+            
+            // Log the expedition results
+            addColonyLog(`Foraging expedition returned with ${adjustedFood} food (${perishableFood} perishable, ${nonPerishableFood} non-perishable).`);
+            
+            // Update display
+            updateDisplay();
+        }
+        
+        // Create and send a foraging expedition
+        function sendForagingExpedition() {
+            const workerCount = parseInt(foragingSlider.value);
+            if (workerCount <= 0) return;
+            
+            // Determine expedition duration (random between 60s and 120s)
+            const duration = Math.floor(Math.random() * 60000) + 60000;
+            
+            // Create expedition
+            const expedition = {
+                id: Date.now(),
+                workers: workerCount,
+                startTime: Date.now(),
+                duration: duration,
+                efficiency: getForageEfficiency()
+            };
+            
+            // Update colony state
+            colony.foraging.currentExpeditions.push(expedition);
+            colony.foraging.availableWorkers -= workerCount;
+            
+            // Reset slider
+            foragingSlider.value = 0;
+            foragingSlider.max = colony.foraging.availableWorkers;
+            foragingWorkersDisplay.textContent = 0;
+            availableWorkersDisplay.textContent = colony.foraging.availableWorkers;
+            
+            // Log expedition
+            addAntLog(`${workerCount} workers sent on a foraging expedition.`);
+            
+            // Update expedition display
+            updateExpeditionsDisplay();
+        }
+        
+        // Update expeditions display - IMPROVED for consistent display
+        function updateExpeditionsDisplay() {
+            expeditionsContainer.innerHTML = '';
+            
+            if (colony.foraging.currentExpeditions.length === 0) {
+                expeditionsContainer.innerHTML = '<div class="text-center text-gray-500 dark:text-gray-400 py-6">No active expeditions</div>';
+                return;
+            }
+            
+            // Sort expeditions by completion percentage
+            const sortedExpeditions = [...colony.foraging.currentExpeditions].sort((a, b) => {
+                const aProgress = (Date.now() - a.startTime) / a.duration;
+                const bProgress = (Date.now() - b.startTime) / b.duration;
+                return bProgress - aProgress; // Sort by most complete first
+            });
+            
+            // Create elements for each expedition
+            sortedExpeditions.forEach(expedition => {
+                const elapsed = Date.now() - expedition.startTime;
+                const progress = Math.min(100, (elapsed / expedition.duration) * 100);
+                const timeLeft = Math.max(0, expedition.duration - elapsed);
+                const secondsLeft = Math.ceil(timeLeft / 1000);
+                
+                // Create expedition item
+                const expeditionItem = document.createElement('div');
+                expeditionItem.className = 'expedition-item bg-white dark:bg-gray-900 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm';
+                
+                expeditionItem.innerHTML = `
+                    <div class="flex justify-between mb-1">
+                        <span class="text-sm font-medium">Foraging Party (${expedition.workers} workers)</span>
+                        <span class="text-sm">${secondsLeft}s left</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-2">
+                        <div id="progress-${expedition.id}" class="bg-primary h-2.5 rounded-full progress-fill" style="width: ${progress}%;"></div>
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">
+                        Expected food: ~${Math.floor(expedition.workers * colony.foraging.foodPerMinutePerWorker * (expedition.duration / 60000) * expedition.efficiency)} units
+                    </div>
+                `;
+                
+                expeditionsContainer.appendChild(expeditionItem);
+            });
+        }
+        
+        // Build a fungus farm
+        function buildFungusFarm() {
+            const foodCost = 10;
+            const workerCost = 3;
+            
+            // Check requirements
+            if (colony.food.total < foodCost) {
+                addColonyLog("Not enough food to build a fungus farm.");
+                showNotification("Not enough food to build a fungus farm.", "error");
+                return;
+            }
+            
+            if (colony.foraging.availableWorkers < workerCost) {
+                addColonyLog("Not enough available workers to build a fungus farm.");
+                showNotification("Not enough available workers to build a fungus farm.", "error");
+                return;
+            }
+            
+            // Deduct costs
+            colony.food.total -= foodCost;
+            if (colony.food.nonPerishable >= foodCost) {
+                colony.food.nonPerishable -= foodCost;
+            } else {
+                const nonPerishableUsed = colony.food.nonPerishable;
+                colony.food.nonPerishable = 0;
+                colony.food.perishable -= (foodCost - nonPerishableUsed);
+            }
+            
+            colony.foraging.availableWorkers -= workerCost;
+            availableWorkersDisplay.textContent = colony.foraging.availableWorkers;
+            
+            // Increase farms
+            colony.fungus.farms++;
+            
+            // Record event
+            colony.history.events.push({
+                day: colony.day,
+                type: 'improvement',
+                description: `Built fungus farm #${colony.fungus.farms}`
+            });
+            
+            // Log success
+            addColonyLog(`A new fungus farm has been built! You now have ${colony.fungus.farms} farms.`);
+            showNotification(`Fungus farm #${colony.fungus.farms} built!`, "success");
+            
+            // Update display
+            updateDisplay();
+        }
+        
+        // Assign roles to newly matured ants
+        function assignNewAnts(count) {
+            // Check colony needs
+            const foodNeed = colony.food.total < 20;
+            const defenseNeed = colony.threatLevel !== 'Low';
+            const nursingNeed = (colony.population.eggs + colony.population.larvae) > colony.population.nurses * 3;
+            
+            // Distribute based on needs
+            for (let i = 0; i < count; i++) {
+                if (foodNeed && (i % 3 === 0 || (!defenseNeed && !nursingNeed))) {
+                    colony.population.workers++;
+                    colony.foraging.availableWorkers++;
+                    addAntLog(`New ant assigned as worker`);
+                } else if (defenseNeed && (i % 3 === 1 || (!foodNeed && !nursingNeed))) {
+                    colony.population.soldiers++;
+                    addAntLog(`New ant assigned as soldier`);
+                } else if (nursingNeed && (i % 3 === 2 || (!foodNeed && !defenseNeed))) {
+                    colony.population.nurses++;
+                    addAntLog(`New ant assigned as nurse`);
+                } else {
+                    // Default to worker
+                    colony.population.workers++;
+                    colony.foraging.availableWorkers++;
+                    addAntLog(`New ant assigned as worker`);
+                }
+            }
+            
+            // Update available workers display and slider
+            availableWorkersDisplay.textContent = colony.foraging.availableWorkers;
+            foragingSlider.max = colony.foraging.availableWorkers;
+        }
+        
+        // Dynamically adjust ant roles based on colony needs
+        function adjustAntRoles() {
+            // Only adjust if we have enough ants
+            if (getTotalPopulation() < 10) return;
+            
+            // Determine colony priorities
+            const foodPriority = colony.food.total < 30 ? 'high' : colony.food.total < 60 ? 'medium' : 'low';
+            const defensePriority = colony.threatLevel === 'High' ? 'high' : colony.threatLevel === 'Medium' ? 'medium' : 'low';
+            const nursingPriority = (colony.population.eggs + colony.population.larvae) > colony.population.nurses * 4 ? 'high' : 
+                                     (colony.population.eggs + colony.population.larvae) > colony.population.nurses * 2 ? 'medium' : 'low';
+            
+            // Decide on role changes
+            let workerChange = 0;
+            let soldierChange = 0;
+            let nurseChange = 0;
+            
+            // Handle high priority needs first
+            if (foodPriority === 'high' && (defensePriority !== 'high' || nursingPriority !== 'high')) {
+                // Convert 1-2 ants to workers
+                if (colony.population.soldiers > 2 && defensePriority !== 'high') {
+                    colony.population.soldiers--;
+                    colony.population.workers++;
+                    colony.foraging.availableWorkers++;
+                    workerChange++;
+                    addAntLog(`A soldier ant has switched to become a worker`);
+                }
+                if (colony.population.nurses > 2 && nursingPriority !== 'high') {
+                    colony.population.nurses--;
+                    colony.population.workers++;
+                    colony.foraging.availableWorkers++;
+                    workerChange++;
+                    addAntLog(`A nurse ant has switched to become a worker`);
+                }
+            }
+            
+            if (defensePriority === 'high' && (foodPriority !== 'high' || nursingPriority !== 'high')) {
+                // Convert 1-2 ants to soldiers
+                if (colony.population.workers > 3 && foodPriority !== 'high' && colony.foraging.availableWorkers > 2) {
+                    colony.population.workers--;
+                    colony.foraging.availableWorkers--;
+                    colony.population.soldiers++;
+                    soldierChange++;
+                    addAntLog(`A worker ant has switched to become a soldier`);
+                }
+                if (colony.population.nurses > 2 && nursingPriority !== 'high') {
+                    colony.population.nurses--;
+                    colony.population.soldiers++;
+                    soldierChange++;
+                    addAntLog(`A nurse ant has switched to become a soldier`);
+                }
+            }
+            
+            if (nursingPriority === 'high' && (foodPriority !== 'high' || defensePriority !== 'high')) {
+                // Convert 1-2 ants to nurses
+                if (colony.population.workers > 3 && foodPriority !== 'high' && colony.foraging.availableWorkers > 2) {
+                    colony.population.workers--;
+                    colony.foraging.availableWorkers--;
+                    colony.population.nurses++;
+                    nurseChange++;
+                    addAntLog(`A worker ant has switched to become a nurse`);
+                }
+                if (colony.population.soldiers > 2 && defensePriority !== 'high') {
+                    colony.population.soldiers--;
+                    colony.population.nurses++;
+                    nurseChange++;
+                    addAntLog(`A soldier ant has switched to become a nurse`);
+                }
+            }
+            
+            // Log significant role changes
+            if (workerChange + soldierChange + nurseChange >= 2) {
+                addColonyLog(`Ants have reorganized roles based on colony needs`);
+            }
+            
+            // Update resource allocation percentages
+            updateResourceAllocation();
+            
+            // Update available workers display
+            availableWorkersDisplay.textContent = colony.foraging.availableWorkers;
+            foragingSlider.max = colony.foraging.availableWorkers;
+            if (parseInt(foragingSlider.value) > colony.foraging.availableWorkers) {
+                foragingSlider.value = colony.foraging.availableWorkers;
+                foragingWorkersDisplay.textContent = foragingSlider.value;
+            }
+        }
+        
+        // Update resource allocation percentages
+        function updateResourceAllocation() {
+            const totalAnts = colony.population.workers + colony.population.soldiers + colony.population.nurses;
+            if (totalAnts === 0) return;
+            
+            colony.resourceAllocation.foraging = Math.round((colony.population.workers / totalAnts) * 100);
+            colony.resourceAllocation.defense = Math.round((colony.population.soldiers / totalAnts) * 100);
+            colony.resourceAllocation.nursing = Math.round((colony.population.nurses / totalAnts) * 100);
+            
+            // Adjust in case of rounding errors
+            const total = colony.resourceAllocation.foraging + colony.resourceAllocation.defense + colony.resourceAllocation.nursing;
+            if (total !== 100) {
+                colony.resourceAllocation.foraging += (100 - total);
+            }
+        }
+        
+        // Trigger random events - ENHANCED with new events
+        function triggerRandomEvent() {
+            const events = [
+                { name: 'Rain Shower', probability: 0.3, action: () => {
+                    colony.weather = 'Rainy';
+                    addColonyLog('A rain shower has started. Foraging efficiency reduced.');
+                    showNotification('Rain shower started!', 'info');
+                    updateWeatherTooltip(); // Update the tooltip to show rainy effects
+                    
+                    // Return to sunny after a while
+                    setTimeout(() => {
+                        colony.weather = 'Sunny';
+                        addColonyLog('The rain has stopped. Weather is sunny again.');
+                        updateWeatherTooltip(); // Update tooltip back to sunny
+                    }, simulationSpeed * 10);
+                }},
+                { name: 'Food Discovery', probability: 0.2, action: () => {
+                    const foodAmount = Math.floor(Math.random() * 20) + 10;
+                    // 70% perishable, 30% non-perishable for natural discoveries
+                    const perishableAmount = Math.floor(foodAmount * 0.7);
+                    const nonPerishableAmount = foodAmount - perishableAmount;
+                    
+                    colony.food.perishable += perishableAmount;
+                    colony.food.nonPerishable += nonPerishableAmount;
+                    colony.food.total += foodAmount;
+                    
+                    addColonyLog(`Workers discovered a large food source! +${foodAmount} food (+${perishableAmount} perishable, +${nonPerishableAmount} non-perishable).`);
+                    showNotification(`Food discovered: +${foodAmount}!`, 'success');
+                }},
+                { name: 'Predator Attack', probability: 0.15, action: () => {
+                    colony.threatLevel = 'High';
+                    addColonyLog('A predator is threatening the colony!');
+                    showNotification('Predator attack!', 'error');
+                    
+                    // Record major event
+                    colony.history.events.push({
+                        day: colony.day,
+                        type: 'threat',
+                        description: 'Predator attack'
+                    });
+                    
+                    // Soldiers defend
+                    const defenseStrength = colony.population.soldiers * 2;
+                    const attackStrength = Math.floor(Math.random() * 10) + 5;
+                    
+                    if (defenseStrength >= attackStrength) {
+                        addColonyLog('Soldiers successfully defended the colony!');
+                        // Possible soldier loss
+                        if (Math.random() < 0.3 && colony.population.soldiers > 0) {
+                            colony.population.soldiers--;
+                            addColonyLog('A soldier ant was lost in the defense.');
+                        }
+                    } else {
+                        addColonyLog('The defense was overwhelmed!');
+                        // Lose some ants
+                        const losses = Math.min(Math.floor(Math.random() * 3) + 1, getTotalPopulation() - 1);
+                        for (let i = 0; i < losses; i++) {
+                            reduceRandomAnt();
+                        }
+                        addColonyLog(`${losses} ants were lost in the attack.`);
+                    }
+                    
+                    // Return to normal after a while
+                    setTimeout(() => {
+                        colony.threatLevel = 'Low';
+                        addColonyLog('The threat has passed. Colony is safe again.');
+                    }, simulationSpeed * 8);
+                }},
+                { name: 'New Chamber', probability: 0.1, action: () => {
+                    if (Math.random() < 0.5 && colony.population.workers >= 3) {
+                        colony.nestSize++;
+                        addColonyLog('Workers have excavated a new chamber!');
+                        showNotification('New chamber excavated!', 'success');
+                        // Add the new chamber
+                        const chamberTypes = ['Food Storage', 'Nursery', 'Tunnel'];
+                        const type = chamberTypes[Math.floor(Math.random() * chamberTypes.length)];
+                        colony.chambers.push({ 
+                            type: type, 
+                            ants: ['W', 'W'], 
+                            size: 1 
+                        });
+                    }
+                }},
+                { name: 'Disease Outbreak', probability: 0.05, action: () => {
+                    addColonyLog('A disease is spreading in the colony!');
+                    showNotification('Disease outbreak!', 'error');
+                    
+                    // Record major event
+                    colony.history.events.push({
+                        day: colony.day,
+                        type: 'disaster',
+                        description: 'Disease outbreak'
+                    });
+                    
+                    // Reduce health of some ants
+                    const affectedCount = Math.min(Math.floor(Math.random() * 3) + 1, getTotalPopulation() - 1);
+                    for (let i = 0; i < affectedCount; i++) {
+                        if (Math.random() < 0.3) {
+                            reduceRandomAnt();
+                            addAntLog('An ant has died from disease');
+                        }
+                    }
+                }},
+                { name: 'Food Spoilage Crisis', probability: 0.1, action: () => {
+                    if (colony.food.perishable > 20) {
+                        const spoiledAmount = Math.floor(colony.food.perishable * 0.3);
+                        colony.food.perishable -= spoiledAmount;
+                        colony.food.total = colony.food.perishable + colony.food.nonPerishable;
+                        addColonyLog(`Humidity caused rapid spoilage! ${spoiledAmount} units of perishable food was lost.`);
+                        showNotification(`Rapid food spoilage: -${spoiledAmount} units!`, 'error');
+                    }
+                }},
+                // NEW EVENT: Flash Flood
+                { name: 'Flash Flood', probability: 0.05, action: () => {
+                    addColonyLog('A flash flood is threatening the colony entrance!');
+                    showNotification('Flash flood warning!', 'error');
+                    
+                    // Record major event
+                    colony.history.events.push({
+                        day: colony.day,
+                        type: 'disaster',
+                        description: 'Flash flood'
+                    });
+                    
+                    // Emergency response mobilization
+                    const workerResponse = Math.min(colony.foraging.availableWorkers, 3);
+                    
+                    if (workerResponse > 0) {
+                        // Temporarily remove workers for emergency response
+                        colony.foraging.availableWorkers -= workerResponse;
+                        availableWorkersDisplay.textContent = colony.foraging.availableWorkers;
+                        
+                        addColonyLog(`${workerResponse} workers are building flood barriers!`);
+                        
+                        // After some time, return the workers
+                        setTimeout(() => {
+                            colony.foraging.availableWorkers += workerResponse;
+                            availableWorkersDisplay.textContent = colony.foraging.availableWorkers;
+                            
+                            // Success or failure based on numbers
+                            if (workerResponse >= 2) {
+                                addColonyLog('The barriers held! Colony entrance is safe.');
+                                showNotification('Flood barriers held!', 'success');
+                            } else {
+                                // Some food loss if we didn't have enough workers
+                                const foodLoss = Math.floor(colony.food.total * 0.1);
+                                colony.food.perishable = Math.max(0, colony.food.perishable - foodLoss);
+                                colony.food.total = colony.food.perishable + colony.food.nonPerishable;
+                                addColonyLog(`Some chambers flooded! Lost ${foodLoss} units of food.`);
+                                showNotification(`Chambers flooded! -${foodLoss} food`, 'error');
+                            }
+                            
+                            foragingSlider.max = colony.foraging.availableWorkers;
+                        }, simulationSpeed * 6);
+                    } else {
+                        // No workers to respond
+                        const foodLoss = Math.floor(colony.food.total * 0.2);
+                        colony.food.perishable = Math.max(0, colony.food.perishable - foodLoss);
+                        colony.food.total = colony.food.perishable + colony.food.nonPerishable;
+                        addColonyLog(`No workers available to respond! Colony partially flooded, lost ${foodLoss} units of food.`);
+                        showNotification(`Colony flooded! -${foodLoss} food`, 'error');
+                    }
+                }},
+                // NEW EVENT: Fungus Blight
+                { name: 'Fungus Blight', probability: 0.05, action: () => {
+                    if (colony.fungus.farms > 0) {
+                        addColonyLog('A fungus blight is attacking the farms!');
+                        showNotification('Fungus blight spreading!', 'error');
+                        
+                        // Record event
+                        colony.history.events.push({
+                            day: colony.day,
+                            type: 'disaster',
+                            description: 'Fungus blight'
+                        });
+                        
+                        // Determine damage
+                        const farmDamage = Math.ceil(colony.fungus.farms * 0.4);
+                        if (farmDamage > 0) {
+                            colony.fungus.farms -= farmDamage;
+                            addColonyLog(`${farmDamage} fungus ${farmDamage === 1 ? 'farm' : 'farms'} destroyed by the blight!`);
+                        }
+                    }
+                }},
+                // NEW EVENT: Ant Rivalry
+                { name: 'Ant Rivalry', probability: 0.05, action: () => {
+                    if (colony.population.soldiers > 0) {
+                        addColonyLog('A rival ant colony has been spotted nearby!');
+                        showNotification('Rival ants nearby!', 'info');
+                        
+                        // If we have sufficient soldiers, we can fend them off
+                        if (colony.population.soldiers >= 3) {
+                            addColonyLog('Soldiers successfully defended territory from rival ants.');
+                            
+                            // Possible food reward
+                            if (Math.random() < 0.4) {
+                                const foodAmount = Math.floor(Math.random() * 10) + 5;
+                                colony.food.nonPerishable += foodAmount;
+                                colony.food.total += foodAmount;
+                                addColonyLog(`Soldiers secured ${foodAmount} food units from the rival territory!`);
+                                showNotification(`Gained ${foodAmount} food from rivals!`, 'success');
+                            }
+                        } else {
+                            // We might lose an expedition if one is active
+                            if (colony.foraging.currentExpeditions.length > 0 && Math.random() < 0.6) {
+                                // Pick a random expedition
+                                const expeditionIndex = Math.floor(Math.random() * colony.foraging.currentExpeditions.length);
+                                const targetExpedition = colony.foraging.currentExpeditions[expeditionIndex];
+                                
+                                // Remove it
+                                colony.foraging.currentExpeditions.splice(expeditionIndex, 1);
+                                
+                                // Return workers
+                                colony.foraging.availableWorkers += targetExpedition.workers;
+                                
+                                addColonyLog('A foraging expedition was forced to retreat by rival ants! No food was collected.');
+                                showNotification('Expedition forced to retreat!', 'error');
+                                updateExpeditionsDisplay();
+                            } else {
+                                // Otherwise lose some territory temporarily
+                                addColonyLog('Rival ants have temporarily restricted our foraging area.');
+                                
+                                // Reduce foraging efficiency for a while
+                                const originalRate = colony.foraging.foodPerMinutePerWorker;
+                                colony.foraging.foodPerMinutePerWorker = Math.max(1, originalRate - 2);
+                                
+                                setTimeout(() => {
+                                    colony.foraging.foodPerMinutePerWorker = originalRate;
+                                    addColonyLog('Foraging territory has been restored.');
+                                    showNotification('Foraging territory restored', 'success');
+                                }, simulationSpeed * 15);
+                            }
+                        }
+                    }
+                }}
+            ];
+            
+            // Filter events by probability
+            const possibleEvents = events.filter(e => Math.random() < e.probability);
+            
+            // Trigger one random event from the possible ones
+            if (possibleEvents.length > 0) {
+                const event = possibleEvents[Math.floor(Math.random() * possibleEvents.length)];
+                event.action();
+            }
+        }
+        
+        // Reduce population by removing a random ant
+        function reduceRandomAnt() {
+            const antTypes = ['workers', 'soldiers', 'nurses'];
+            const weights = [colony.population.workers, colony.population.soldiers, colony.population.nurses];
+            const totalWeight = weights.reduce((a, b) => a + b, 0);
+            
+            if (totalWeight === 0) return;
+            
+            let random = Math.random() * totalWeight;
+            let cumulativeWeight = 0;
+            
+            for (let i = 0; i < antTypes.length; i++) {
+                cumulativeWeight += weights[i];
+                if (random < cumulativeWeight) {
+                    colony.population[antTypes[i]]--;
+                    
+                    // If we're losing a worker, reduce available workers too
+                    if (antTypes[i] === 'workers') {
+                        colony.foraging.availableWorkers = Math.max(0, colony.foraging.availableWorkers - 1);
+                    }
+                    
+                    return antTypes[i];
+                }
+            }
+        }
+        
+        // Change time of day
+        function changeTimeOfDay(time) {
+            colony.timeOfDay = time;
+            addAntLog(`Time of day changed to ${time}`);
+        }
+        
+        // Add log entry
+        function addColonyLog(message) {
+            const logEntry = {
+                day: colony.day,
+                time: colony.timeOfDay,
+                message: message
+            };
+            colony.logs.colony.unshift(logEntry);
+            
+            // Keep logs to a reasonable size
+            if (colony.logs.colony.length > 100) {
+                colony.logs.colony.pop();
+            }
+            
+            // Update log display if we're viewing colony logs
+            if (currentLogView === 'colony') {
+                updateLogDisplay();
+            }
+        }
+        
+        function addAntLog(message) {
+            const logEntry = {
+                day: colony.day,
+                time: colony.timeOfDay,
+                message: message
+            };
+            colony.logs.ants.unshift(logEntry);
+            
+            // Keep logs to a reasonable size
+            if (colony.logs.ants.length > 100) {
+                colony.logs.ants.pop();
+            }
+            
+            // Update log display if we're viewing ant logs
+            if (currentLogView === 'ants') {
+                updateLogDisplay();
+            }
+        }
+        
+        // Update log display
+        function updateLogDisplay() {
+            eventLog.innerHTML = '';
+            
+            const logs = currentLogView === 'colony' ? colony.logs.colony : colony.logs.ants;
+            
+            logs.forEach((log, index) => {
+                const logElement = document.createElement('div');
+                logElement.className = 'log-entry mb-2 ' + (index === 0 ? 'font-medium' : '');
+                logElement.innerHTML = `<span class="text-primary dark:text-blue-400">Day ${log.day} (${log.time}):</span> ${log.message}`;
+                eventLog.appendChild(logElement);
+            });
+        }
+        
+        // Update the visual display
+        function updateDisplay() {
+            // Update stats
+            populationDisplay.textContent = getTotalPopulation();
+            foodDisplay.textContent = colony.food.total;
+            perishableFoodDisplay.textContent = colony.food.perishable;
+            nonPerishableFoodDisplay.textContent = colony.food.nonPerishable;
+            queenHealthDisplay.textContent = colony.queen.health;
+            nestSizeDisplay.textContent = colony.nestSize;
+            threatLevelDisplay.textContent = colony.threatLevel;
+            weatherDisplay.textContent = colony.weather;
+            seasonDisplay.textContent = colony.season;
+            fungusFarmsDisplay.textContent = colony.fungus.farms;
+            fungusFarmCountDisplay.textContent = colony.fungus.farms;
+            fungusProductionRateDisplay.textContent = `${colony.fungus.farms * colony.fungus.productionRate} food/min`;
+            
+            // Update population bars
+            const totalAnts = getTotalAdultAnts();
+            updatePopulationBar(workerBar, workerCount, colony.population.workers, totalAnts);
+            updatePopulationBar(soldierBar, soldierCount, colony.population.soldiers, totalAnts);
+            updatePopulationBar(nurseBar, nurseCount, colony.population.nurses, totalAnts);
+            updatePopulationBar(queenBar, queenCount, colony.population.queen, totalAnts);
+            
+            // Update colony visualization
+            updateColonyVisualization();
+            
+            // Update foraging display
+            availableWorkersDisplay.textContent = colony.foraging.availableWorkers;
+            foragingWorkersDisplay.textContent = foragingSlider.value;
+        }
+        
+        // Update population bar
+        function updatePopulationBar(bar, count, value, total) {
+            const percentage = total === 0 ? 0 : (value / total) * 100;
+            bar.style.width = `${percentage}%`;
+            count.textContent = value;
+        }
+        
+        // Get total population (including eggs, larvae, pupae)
+        function getTotalPopulation() {
+            return colony.population.queen + 
+                   colony.population.workers + 
+                   colony.population.soldiers + 
+                   colony.population.nurses +
+                   colony.population.eggs +
+                   colony.population.larvae +
+                   colony.population.pupae;
+        }
+        
+        // Get total adult ants
+        function getTotalAdultAnts() {
+            return colony.population.queen + 
+                   colony.population.workers + 
+                   colony.population.soldiers + 
+                   colony.population.nurses;
+        }
+        
+        // Update the ASCII visualization of the colony
+        function updateColonyVisualization() {
+            let visualization = `Ant Colony - Day ${colony.day} (${colony.timeOfDay})\n\n`;
+            
+            // Surface level - entrance
+            visualization += `Ground Level:\n`;
+            visualization += `${colony.weather === 'Sunny' ? '☀️' : '🌧️'}  `;
+            
+            // Entrance with some ants
+            const entranceAnts = colony.chambers.find(c => c.type === 'Entrance')?.ants || [];
+            visualization += `          [Entrance]`;
+            for (let i = 0; i < entranceAnts.length; i++) {
+                if (i < 3) { // Only show up to 3 ants at entrance
+                    visualization += getAntSymbol(entranceAnts[i]);
+                }
+            }
+            
+            visualization += `\n`;
+            visualization += `                     |\n`;
+            
+            // Underground chambers
+            visualization += `Underground:        |\n`;
+            
+            // Render each chamber
+            for (let i = 0; i < colony.chambers.length; i++) {
+                if (colony.chambers[i].type !== 'Entrance') {
+                    visualization += `      ${getChamberSymbol(colony.chambers[i])}${colony.chambers[i].type.padEnd(15)}`;
+                    
+                    // Show ants in chamber
+                    for (let j = 0; j < Math.min(colony.chambers[i].ants.length, 5); j++) {
+                        visualization += getAntSymbol(colony.chambers[i].ants[j]);
+                    }
+                    
+                    if (colony.chambers[i].ants.length > 5) {
+                        visualization += `+${colony.chambers[i].ants.length - 5}`;
+                    }
+                    
+                    visualization += `\n`;
+                }
+            }
+            
+            // Add fungus farms if any exist
+            if (colony.fungus.farms > 0) {
+                visualization += `      🍄 Fungus Farms    `;
+                for (let i = 0; i < Math.min(colony.fungus.farms, 5); i++) {
+                    visualization += `🍄`;
+                }
+                
+                if (colony.fungus.farms > 5) {
+                    visualization += `+${colony.fungus.farms - 5}`;
+                }
+                
+                visualization += `\n`;
+            }
+            
+            // Development stages
+            visualization += `\nDevelopment:\n`;
+            visualization += ` 🥚 Eggs: ${colony.population.eggs.toString().padEnd(5)}`;
+            visualization += `🐛 Larvae: ${colony.population.larvae.toString().padEnd(5)}`;
+            visualization += `📦 Pupae: ${colony.population.pupae.toString().padEnd(5)}\n`;
+            
+            colonyDisplay.innerHTML = visualization;
+        }
+        
+        // Get symbol for chamber type
+        function getChamberSymbol(chamber) {
+            switch(chamber.type) {
+                case 'Queen Chamber': return '👑 ';
+                case 'Nursery': return '🛌 ';
+                case 'Food Storage': return '🍲 ';
+                case 'Tunnel': return '🚇 ';
+                default: return '⬜ ';
+            }
+        }
+        
+        // Get symbol for ant type
+        function getAntSymbol(antCode) {
+            switch(antCode) {
+                case 'Q': return '<span class="ant-queen">🐜</span>';
+                case 'W': return '<span class="ant-worker">🐜</span>';
+                case 'S': return '<span class="ant-soldier">🐜</span>';
+                case 'N': return '<span class="ant-nurse">🐜</span>';
+                default: return '<span>🐜</span>';
+            }
+        }
+        
+        // Set Add Food button cooldown
+        function setAddFoodCooldown() {
+            if (addFoodCooldown.active) return;
+            
+            addFoodCooldown.active = true;
+            addFoodCooldown.timeLeft = addFoodCooldown.maxTime;
+            
+            // Disable the button
+            btnAddFood.disabled = true;
+            btnAddFood.classList.add('opacity-50');
+            
+            // Show cooldown text
+            addFoodCooldownElement.classList.remove('hidden');
+            
+            // Update cooldown bar visual effect
+            const cooldownBar = btnAddFood.querySelector('::before');
+            if (cooldownBar) {
+                cooldownBar.style.transition = `transform ${addFoodCooldown.maxTime}s linear`;
+                cooldownBar.style.transform = 'scaleX(1)';
+            }
+            
+            // Start the countdown
+            addFoodCooldown.interval = setInterval(() => {
+                addFoodCooldown.timeLeft--;
+                addFoodCooldownElement.textContent = `Available in ${addFoodCooldown.timeLeft}s`;
+                
+                if (addFoodCooldown.timeLeft <= 0) {
+                    clearInterval(addFoodCooldown.interval);
+                    addFoodCooldown.active = false;
+                    btnAddFood.disabled = false;
+                    btnAddFood.classList.remove('opacity-50');
+                    addFoodCooldownElement.classList.add('hidden');
+                }
+            }, 1000);
+        }
+        
+        // Setup event listeners
+        function setupEventListeners() {
+            // Simulation control
+            btnPause.addEventListener('click', function() {
+                isPaused = !isPaused;
+                this.textContent = isPaused ? 'Resume' : 'Pause';
+                this.classList.toggle('bg-green-600', isPaused);
+                this.classList.toggle('bg-primary', !isPaused);
+            });
+            
+            // Player actions
+            btnAddFood.addEventListener('click', function() {
+                if (addFoodCooldown.active) return;
+                
+                const amount = Math.floor(Math.random() * 10) + 5;
+                const perishableAmount = Math.floor(amount * 0.7);
+                const nonPerishableAmount = amount - perishableAmount;
+                
+                colony.food.perishable += perishableAmount;
+                colony.food.nonPerishable += nonPerishableAmount;
+                colony.food.total += amount;
+                
+                addColonyLog(`Player added a small food source (+${amount} food: ${perishableAmount} perishable, ${nonPerishableAmount} non-perishable).`);
+                showNotification(`Added ${amount} food!`, 'success');
+                updateDisplay();
+                
+                // Start cooldown
+                setAddFoodCooldown();
+            });
+            
+            btnObserve.addEventListener('click', function() {
+                // First, check for a rare discovery (hidden food stash)
+                if (!processObservationEvent()) {
+                    // If no rare event, proceed with regular observation
+                    const chambers = colony.chambers.filter(c => c.type !== 'Entrance');
+                    const randomChamber = chambers[Math.floor(Math.random() * chambers.length)];
+                    addColonyLog(`You observe the ${randomChamber.type}. There are ${randomChamber.ants.length} ants here.`);
+                    
+                    // Random detailed observation
+                    const observations = [
+                  	"The ants are working in perfect coordination.",
+                    	"Several ants appear to be communicating through antennae.",
+                    	"The chamber has been recently expanded.",
+                    	"The walls here are carefully reinforced with small pebbles.",
+                    	"A few ants are grooming each other.",
+                    	"The air here is noticeably humid and warm.",
+		    	"The chamber floor is covered with tiny trails of pheromones guiding the workers.",
+		    	"The gentle hum of movement fills the chamber as ants go about their tasks.",
+		    	"A few ants are reinforcing the tunnel walls with compacted dirt.",
+		    	"Several ants pause momentarily to clean their legs and antennae before moving on.",
+		    	"A slow trickle of ants passes through, carrying tiny bits of debris outside.",
+		    	"Some workers appear to be inspecting a small crack in the chamber walls."
+                    ];
+                    
+                    addColonyLog(observations[Math.floor(Math.random() * observations.length)]);
+                    showNotification(`Observed ${randomChamber.type}`, 'info');
+                }
+                
+                updateDisplay();
+            });
+            
+            // Log type buttons
+            btnLogColony.addEventListener('click', function() {
+                currentLogView = 'colony';
+                updateLogDisplay();
+                this.classList.add('bg-primary');
+                this.classList.remove('bg-gray-400');
+                btnLogAnts.classList.remove('bg-primary');
+                btnLogAnts.classList.add('bg-gray-400');
+            });
+            
+            btnLogAnts.addEventListener('click', function() {
+                currentLogView = 'ants';
+                updateLogDisplay();
+                this.classList.add('bg-primary');
+                this.classList.remove('bg-gray-400');
+                btnLogColony.classList.remove('bg-primary');
+                btnLogColony.classList.add('bg-gray-400');
+            });
+            
+            // Historical data tab buttons
+            btnTabPopulation.addEventListener('click', function() {
+                currentChartTab = 'population';
+                
+                btnTabPopulation.classList.add('bg-primary');
+                btnTabPopulation.classList.remove('bg-gray-400');
+                btnTabFood.classList.add('bg-gray-400');
+                btnTabFood.classList.remove('bg-primary');
+                btnTabEvents.classList.add('bg-gray-400');
+                btnTabEvents.classList.remove('bg-primary');
+                
+                updateHistoricalChart();
+            });
+            
+            btnTabFood.addEventListener('click', function() {
+                currentChartTab = 'food';
+                
+                btnTabFood.classList.add('bg-primary');
+                btnTabFood.classList.remove('bg-gray-400');
+                btnTabPopulation.classList.add('bg-gray-400');
+                btnTabPopulation.classList.remove('bg-primary');
+                btnTabEvents.classList.add('bg-gray-400');
+                btnTabEvents.classList.remove('bg-primary');
+                
+                updateHistoricalChart();
+            });
+            
+            btnTabEvents.addEventListener('click', function() {
+                currentChartTab = 'events';
+                
+                btnTabEvents.classList.add('bg-primary');
+                btnTabEvents.classList.remove('bg-gray-400');
+                btnTabPopulation.classList.add('bg-gray-400');
+                btnTabPopulation.classList.remove('bg-primary');
+                btnTabFood.classList.add('bg-gray-400');
+                btnTabFood.classList.remove('bg-primary');
+                
+                updateHistoricalChart();
+            });
+            
+            // Foraging controls
+            foragingSlider.addEventListener('input', function() {
+                foragingWorkersDisplay.textContent = this.value;
+            });
+            
+            btnDecreaseForagers.addEventListener('click', function() {
+                if (foragingSlider.value > 0) {
+                    foragingSlider.value = parseInt(foragingSlider.value) - 1;
+                    foragingWorkersDisplay.textContent = foragingSlider.value;
+                }
+            });
+            
+            btnIncreaseForagers.addEventListener('click', function() {
+                if (parseInt(foragingSlider.value) < colony.foraging.availableWorkers) {
+                    foragingSlider.value = parseInt(foragingSlider.value) + 1;
+                    foragingWorkersDisplay.textContent = foragingSlider.value;
+                }
+            });
+            
+            btnSendForagers.addEventListener('click', function() {
+                if (parseInt(foragingSlider.value) > 0) {
+                    sendForagingExpedition();
+                    showNotification(`Sent ${foragingSlider.value} workers foraging`, 'info');
+                }
+            });
+            
+            // Fungus farm
+            btnBuildFungus.addEventListener('click', buildFungusFarm);
+            
+            // Save & Load functionality
+            btnSave.addEventListener('click', function() {
+                try {
+                    const saveData = JSON.stringify(colony);
+                    localStorage.setItem('antColonySave', saveData);
+                    showNotification('Game saved successfully!', 'success');
+                } catch (error) {
+                    console.error("Error saving game:", error);
+                    showNotification('Failed to save game!', 'error');
+                }
+            });
+            
+            btnReset.addEventListener('click', function() {
+                if (confirm("Reset the game? All progress will be lost.")) {
+                    localStorage.removeItem('antColonySave');
+                    showNotification('Game reset! Reloading...', 'info');
+                    setTimeout(() => location.reload(), 1000);
+                }
+            });
+            
+            // Export & Import
+            btnExport.addEventListener('click', function() {
+                const saveData = JSON.stringify(colony);
+                const encodedData = btoa(saveData);
+                exportDataTextarea.value = encodedData;
+                exportModal.classList.remove('hidden');
+                showNotification('Save data ready to export', 'info');
+            });
+            
+            btnImport.addEventListener('click', function() {
+                importModal.classList.remove('hidden');
+            });
+            
+            copyExportData.addEventListener('click', function() {
+                exportDataTextarea.select();
+                document.execCommand('copy');
+                this.textContent = "Copied!";
+                showNotification('Save data copied to clipboard!', 'success');
+                setTimeout(() => {
+                    this.textContent = "Copy to Clipboard";
+                }, 2000);
+            });
+            
+            closeExportModal.addEventListener('click', function() {
+                exportModal.classList.add('hidden');
+            });
+            
+            closeImportModal.addEventListener('click', function() {
+                importModal.classList.add('hidden');
+            });
+            
+            confirmImport.addEventListener('click', function() {
+                try {
+                    const encodedData = importDataTextarea.value.trim();
+                    const decodedData = atob(encodedData);
+                    const importedColony = JSON.parse(decodedData);
+                    
+                    // Version check
+                    if (!importedColony.version) {
+                        importedColony.version = '1.0.0'; // Assume old version
+                    }
+                    
+                    // Migrate data if needed
+                    migrateData(importedColony);
+                    
+                    // Apply the imported state
+                    Object.assign(colony, importedColony);
+                    
+                    // Update UI
+                    updateDisplay();
+                    updateWeatherTooltip();
+                    updateSeasonTooltip();
+                    
+                    // Close modal
+                    importModal.classList.add('hidden');
+                    
+                    // Success message
+                    addColonyLog("Game data imported successfully!");
+                    showNotification('Game data imported successfully!', 'success');
+                    
+                } catch (error) {
+                    alert("Error importing save data. Please check the format and try again.");
+                    console.error("Import error:", error);
+                    showNotification('Failed to import save data!', 'error');
+                }
+            });
+            
+            // Support button
+            btnSupport.addEventListener('click', function() {
+                supportModal.classList.remove('hidden');
+            });
+            
+            closeSupportModal.addEventListener('click', function() {
+                supportModal.classList.add('hidden');
+            });
+            
+            // Weather and season display tooltips update
+            weatherDisplay.addEventListener('mouseover', updateWeatherTooltip);
+            seasonDisplay.addEventListener('mouseover', updateSeasonTooltip);
+        }
+        
+        // Save game to localStorage
+        function saveGame() {
+            try {
+                const saveData = JSON.stringify(colony);
+                localStorage.setItem('antColonySave', saveData);
+                return true;
+            } catch (error) {
+                console.error("Error saving game:", error);
+                return false;
+            }
+        }
+        
+        // Load game from localStorage
+        function loadGame() {
+            try {
+                const saveData = localStorage.getItem('antColonySave');
+                if (saveData) {
+                    const savedColony = JSON.parse(saveData);
+                    
+                    // Handle version transitions
+                    migrateData(savedColony);
+                    
+                    // Apply saved data
+                    Object.assign(colony, savedColony);
+                    
+                    addColonyLog("Game loaded from save.");
+                    showNotification('Game loaded from save', 'info');
+                }
+            } catch (error) {
+                console.error("Error loading game:", error);
+                showNotification('Error loading saved game', 'error');
+            }
+        }
+        
+        // Migrate data between versions
+        function migrateData(savedData) {
+            // Handle upgrading from older versions
+            if (!savedData.version || savedData.version < '1.1.0') {
+                // Convert old food structure to new
+                if (typeof savedData.food === 'number') {
+                    const oldFoodValue = savedData.food;
+                    savedData.food = {
+                        total: oldFoodValue,
+                        perishable: Math.floor(oldFoodValue * 0.6),
+                        nonPerishable: Math.ceil(oldFoodValue * 0.4),
+                        spoilage: {
+                            rate: 10,
+                            lastCheck: Date.now()
+                        }
+                    };
+                }
+                
+                // Setup foraging system if not exists
+                if (!savedData.foraging) {
+                    savedData.foraging = {
+                        assignedWorkers: 0,
+                        availableWorkers: savedData.population?.workers || 6,
+                        currentExpeditions: [],
+                        foodPerMinutePerWorker: 4,
+                        expeditionDuration: 60000
+                    };
+                }
+                
+                // Setup fungus farming if not exists
+                if (!savedData.fungus) {
+                    savedData.fungus = {
+                        farms: 0,
+                        productionRate: 3,
+                        lastHarvest: Date.now()
+                    };
+                }
+                
+                // Update version
+                savedData.version = '1.1.0';
+            }
+            
+            // Upgrade from 1.1.0 to 1.1.1
+            if (savedData.version === '1.1.0') {
+                // Add historical data structure if it doesn't exist
+                if (!savedData.history) {
+                    savedData.history = {
+                        days: [],
+                        population: [],
+                        food: {
+                            total: [],
+                            perishable: [],
+                            nonPerishable: []
+                        },
+                        ants: {
+                            queen: [],
+                            workers: [],
+                            soldiers: [],
+                            nurses: []
+                        },
+                        events: []
+                    };
+                }
+                
+                // Add starter data point to history
+                if (savedData.history.days.length === 0) {
+                    savedData.history.days.push(savedData.day);
+                    savedData.history.population.push(savedData.population.queen + 
+                                                     savedData.population.workers + 
+                                                     savedData.population.soldiers + 
+                                                     savedData.population.nurses +
+                                                     savedData.population.eggs +
+                                                     savedData.population.larvae +
+                                                     savedData.population.pupae);
+                    savedData.history.ants.queen.push(savedData.population.queen);
+                    savedData.history.ants.workers.push(savedData.population.workers);
+                    savedData.history.ants.soldiers.push(savedData.population.soldiers);
+                    savedData.history.ants.nurses.push(savedData.population.nurses);
+                    
+                    savedData.history.food.total.push(savedData.food.total);
+                    savedData.history.food.perishable.push(savedData.food.perishable);
+                    savedData.history.food.nonPerishable.push(savedData.food.nonPerishable);
+                }
+                
+                // Update version
+                savedData.version = '1.1.1';
+            }
+        }
+        
+        // Flash autosave indicator
+        function flashAutosaveIndicator() {
+            autosaveIndicator.classList.add('opacity-100');
+            setTimeout(() => {
+                autosaveIndicator.classList.remove('opacity-100');
+            }, 2000);
+        }
+        
+        // Start the simulation
+        window.addEventListener('load', initSimulation);
+    </script>
+</body>
+</html>
